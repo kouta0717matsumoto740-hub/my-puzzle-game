@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ジェネシス：超広域視点版</title>
+    <style>
+        body { background: #111; color: #eee; font-family: 'Meiryo', sans-serif; margin: 0; overflow: hidden; touch-action: none; }
+        canvas { display: block; background: #1a1a1a; }
+        
+        /* 上部ステータス */
+        #ui-top { position: absolute; top: 10px; left: 10px; pointer-events: none; width: calc(100% - 20px); z-index: 20; }
+        .info-panel { background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px; display: flex; justify-content: space-between; border: 1px solid #444; }
+
+        /* 左側：キャラセレクター */
+        #char-switcher { 
+            position: absolute; 
+            top: 70px; 
+            left: 10px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            pointer-events: auto; 
+            max-height: 40vh; 
+            overflow-y: auto; 
+            z-index: 10;
+            padding: 5px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        .char-btn { 
+            width: 80px; 
+            height: 50px; 
+            border-radius: 6px; 
+            border: 2px solid #555; 
+            background: #333; 
+            color: white; 
+            font-size: 10px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            position: relative; 
+            flex-shrink: 0;
+        }
+        .char-btn.active { border-color: #2ecc71; background: #1e4d2b; box-shadow: 0 0 10px #2ecc71; }
+        .lv-badge { position: absolute; top: 1px; right: 1px; background: #f1c40f; color: #000; padding: 1px 3px; border-radius: 3px; font-size: 8px; }
+
+        /* 右側：ガチャメニュー */
+        #gacha-menu { position: absolute; top: 70px; right: 10px; pointer-events: auto; z-index: 10; }
+        .gacha-btn { background: linear-gradient(135deg, #f39c12, #d35400); border: none; color: white; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 12px; cursor: pointer; }
+
+        /* 下部操作エリア */
+        .controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 30px; box-sizing: border-box; pointer-events: none; z-index: 20; }
+        
+        /* 左下：ジョイスティック */
+        .joystick-container { pointer-events: auto; padding-bottom: 10px; }
+        .joystick-area { width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; position: relative; }
+        #stick { width: 50px; height: 50px; background: rgba(255,255,255,0.4); border-radius: 50%; position: absolute; top: 35px; left: 35px; }
+
+        /* 右下：アクションボタン */
+        .action-btns { display: flex; flex-direction: column; align-items: center; gap: 20px; pointer-events: auto; }
+        .main-btn { width: 100px; height: 100px; background: rgba(231, 76, 60, 0.8); border-radius: 50%; border: 3px solid rgba(255,255,255,0.2); color: white; font-weight: bold; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .skill-container { position: relative; width: 85px; height: 85px; }
+        .skill-btn { width: 100%; height: 100%; background: rgba(52, 152, 219, 0.8); border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        #cd-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; color: white; pointer-events: none; visibility: hidden; }
+    </style>
+</head>
+<body>
+
+<div id="ui-top">
+    <div class="info-panel">
+        <div>HP: <span id="hp">100</span> | Wave: <span id="wave">1</span></div>
+        <div style="color: #ffd700;">Gold: <span id="gold">0</span></div>
+    </div>
+</div>
+
+<div id="char-switcher">
+    <button id="btn-0" class="char-btn active" onclick="switchChar(0)">戦士<span class="lv-badge">Lv1</span></button>
+    <button id="btn-1" class="char-btn" onclick="switchChar(1)">弓使い<span class="lv-badge">Lv1</span></button>
+    <button id="btn-2" class="char-btn" onclick="switchChar(2)">魔術師<span class="lv-badge">Lv1</span></button>
+    <button id="btn-3" class="char-btn" onclick="switchChar(3)">盗賊<span class="lv-badge">Lv1</span></button>
+    <div id="extra-chars" style="display: flex; flex-direction: column; gap: 8px;"></div>
+</div>
+
+<div id="gacha-menu">
+    <button class="gacha-btn" onclick="pullGacha()">キャラガチャ<br>(1000 G)</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<div class="controls">
+    <div class="joystick-container">
+        <div class="joystick-area" id="joy-base"><div id="stick"></div></div>
+    </div>
+    <div class="action-btns">
+        <button class="main-btn" onpointerdown="isAttacking=true" onpointerup="isAttacking=false">攻撃</button>
+        <div class="skill-container">
+            <button class="skill-btn" id="skill-btn" onclick="useSkill()">スキル</button>
+            <div id="cd-overlay">0</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- ズームレベルを0.4に設定 ---
+    const ZOOM_LEVEL = 0.4; 
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+
+    let gold = 0, hp = 100, currentCharIndex = 0, wave = 1;
+    let player = { x: 2000, y: 2000, speed: 4.5, invul: 0, lastDir: {x:1, y:0} };
+    let moveDir = { x: 0, y: 0 }, enemies = [], bullets = [], effects = [], isAttacking = false;
+    let isWaveClearing = false, waveClearTimer = 0, enemiesToSpawn = 5, spawnedCount = 0, spawnTimer = 0;
+
+    const charData = [
+        { name: "戦士", color: "#e74c3c", atk: 30, type: 'spread', skill: 'spin', rarity: 'N', level: 1, lastUsed: 0 },
+        { name: "弓使い", color: "#2ecc71", atk: 25, type: 'pierce', skill: 'multi', rarity: 'N', level: 1, lastUsed: 0 },
+        { name: "魔術師", color: "#3498db", atk: 50, type: 'homing', skill: 'meteor', rarity: 'N', level: 1, lastUsed: 0 },
+        { name: "盗賊", color: "#f1c40f", atk: 15, type: 'rapid', skill: 'blink', rarity: 'N', level: 1, lastUsed: 0 }
+    ];
+
+    const gachaPool = [
+        { name: "重装騎士", color: "#95a5a6", atk: 130, type: 'heavy', skill: 'guard', rarity: 'SR', level: 1, lastUsed: 0 },
+        { name: "忍者", color: "#34495e", atk: 45, type: 'ninja', skill: 'shadow', rarity: 'SR', level: 1, lastUsed: 0 },
+        { name: "司祭", color: "#ecf0f1", atk: 65, type: 'holy', skill: 'heal', rarity: 'SR', level: 1, lastUsed: 0 },
+        { name: "龍騎士", color: "#ffd700", atk: 260, type: 'breath', skill: 'beam', rarity: 'SSR', level: 1, lastUsed: 0 }
+    ];
+
+    let myCharacters = [...charData];
+
+    function getClosestEnemy() {
+        let closest = null, minDist = Infinity;
+        enemies.forEach(en => {
+            const d = Math.hypot(en.x - player.x, en.y - player.y);
+            if (d < minDist) { minDist = d; closest = en; }
+        });
+        return closest;
+    }
+
+    function switchChar(idx) {
+        if (!myCharacters[idx]) return;
+        currentCharIndex = idx;
+        document.querySelectorAll('.char-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+    }
+
+    function updateLvUI(idx) {
+        const char = myCharacters[idx];
+        const btn = document.getElementById('btn-' + idx);
+        if (btn) btn.querySelector('.lv-badge').innerText = 'Lv' + char.level;
+    }
+
+    function getCooldown(char) {
+        return Math.max(3000, 8000 - (char.level * 1000));
+    }
+
+    function useSkill() {
+        const c = myCharacters[currentCharIndex];
+        const now = Date.now();
+        const cdTime = getCooldown(c);
+        if (now - c.lastUsed < cdTime) return;
+
+        const target = getClosestEnemy();
+        const targetAng = target ? Math.atan2(target.y - player.y, target.x - player.x) : Math.atan2(player.lastDir.y, player.lastDir.x);
+
+        c.lastUsed = now;
+        const lv = c.level;
+
+        if (c.skill === 'spin') {
+            const range = 120 + (lv * 40);
+            effects.push({ x: player.x, y: player.y, r: 0, maxR: range, color: 'white' });
+            enemies.forEach(en => { if(Math.hypot(en.x-player.x, en.y-player.y) < range) en.hp -= (250 + lv * 150); });
+        } else if (c.skill === 'multi') {
+            const count = 10 + (lv * 5);
+            for(let i=0; i<count; i++) {
+                const ang = targetAng + (i - count/2) * 0.15;
+                bullets.push({ x: player.x, y: player.y, vx: Math.cos(ang)*14, vy: Math.sin(ang)*14, size: 7, atk: c.atk });
+            }
+        } else if (c.skill === 'meteor') {
+            if(target) {
+                const area = 150 + (lv * 50);
+                effects.push({x: target.x, y: target.y, r: 0, maxR: area, color: 'orange'});
+                enemies.forEach(en => { if(Math.hypot(en.x - target.x, en.y - target.y) < area) en.hp -= (600 + lv * 300); });
+            }
+        } else if (c.skill === 'blink') {
+            const dist = 150 + (lv * 60);
+            player.x += Math.cos(targetAng) * dist; player.y += Math.sin(targetAng) * dist;
+        } else if (c.skill === 'guard') {
+            player.invul = 150 + (lv * 50);
+            effects.push({ x: player.x, y: player.y, r: 40, maxR: 45, color: '#95a5a6', loop: true });
+        } else if (c.skill === 'shadow') {
+            for(let i=0; i<lv; i++) {
+                setTimeout(() => {
+                    const freshTarget = getClosestEnemy();
+                    const freshAng = freshTarget ? Math.atan2(freshTarget.y - player.y, freshTarget.x - player.x) : targetAng;
+                    for(let j=0; j<3; j++) bullets.push({x:player.x, y:player.y, vx:Math.cos(freshAng+(j-1)*0.2)*15, vy:Math.sin(freshAng+(j-1)*0.2)*15, size:5, atk:c.atk});
+                }, i * 150);
+            }
+        } else if (c.skill === 'heal') {
+            hp = Math.min(100, hp + (25 + lv * 12));
+            effects.push({ x: player.x, y: player.y, r: 0, maxR: 100, color: '#00ff00' });
+        } else if (c.skill === 'beam') {
+            const thickness = 15 + (lv * 20);
+            effects.push({ x: player.x, y: player.y, r: 0, maxR: 1200, color: 'yellow', type: 'line', thickness: thickness, ang: targetAng });
+            enemies.forEach(en => {
+                const enAng = Math.atan2(en.y - player.y, en.x - player.x);
+                if(Math.abs(enAng - targetAng) < 0.15) en.hp -= (3000 + lv * 2000);
+            });
+        }
+    }
+
+    function pullGacha() {
+        if (gold < 1000) return alert("Gold不足！");
+        gold -= 1000;
+        const allPool = [...charData, ...gachaPool];
+        let res; const rand = Math.random() * 100;
+        if (rand < 5) res = allPool[7];
+        else if (rand < 35) res = allPool[Math.floor(Math.random() * 3) + 4];
+        else res = allPool[Math.floor(Math.random() * 4)];
+
+        const existingIdx = myCharacters.findIndex(c => c.name === res.name);
+        if (existingIdx !== -1) {
+            const char = myCharacters[existingIdx];
+            if (char.level < 5) {
+                char.level++; updateLvUI(existingIdx);
+                return alert(char.name + " 重複：Lv" + char.level);
+            } else { gold += 800; return alert("Lv最大！800G返還"); }
+        }
+        myCharacters.push({...res});
+        const idx = myCharacters.length - 1;
+        const btn = document.createElement('button');
+        btn.id = 'btn-' + idx; btn.className = 'char-btn'; 
+        btn.innerHTML = `${res.rarity}<br>${res.name}<span class="lv-badge">Lv1</span>`; 
+        btn.style.borderColor = res.color; btn.onclick = () => switchChar(idx);
+        document.getElementById('extra-chars').appendChild(btn);
+    }
+
+    function update() {
+        const c = myCharacters[currentCharIndex];
+        const btn = document.getElementById('skill-btn');
+        const overlay = document.getElementById('cd-overlay');
+        const now = Date.now();
+        const cdRemaining = Math.max(0, getCooldown(c) - (now - c.lastUsed));
+
+        if (cdRemaining > 0) {
+            btn.disabled = true; overlay.style.visibility = "visible";
+            overlay.innerText = (cdRemaining / 1000).toFixed(1);
+        } else {
+            btn.disabled = false; overlay.style.visibility = "hidden";
+        }
+
+        if (isWaveClearing) {
+            waveClearTimer--;
+            if (waveClearTimer <= 0) {
+                isWaveClearing = false; wave++; spawnedCount = 0;
+                enemiesToSpawn = 6 + (wave * 2);
+                document.getElementById('wave').innerText = wave;
+            }
+        } else if (spawnedCount < enemiesToSpawn) {
+            spawnTimer++;
+            if (spawnTimer > 100) {
+                spawnTimer = 0;
+                const ang = Math.random() * Math.PI * 2;
+                enemies.push({ x: player.x + Math.cos(ang)*1000, y: player.y + Math.sin(ang)*1000, hp: 120 + (wave*45), speed: 1.2 + (wave*0.08) });
+                spawnedCount++;
+            }
+        } else if (enemies.length === 0) { isWaveClearing = true; waveClearTimer = 180; }
+
+        if (player.invul > 0) player.invul--;
+        player.x += moveDir.x * player.speed; player.y += moveDir.y * player.speed;
+        if (moveDir.x !== 0 || moveDir.y !== 0) player.lastDir = {x: moveDir.x, y: moveDir.y};
+        
+        if (isAttacking && Date.now() % 160 < 25) {
+            const target = getClosestEnemy();
+            if (target) {
+                const ang = Math.atan2(target.y - player.y, target.x - player.x);
+                bullets.push({x:player.x, y:player.y, vx:Math.cos(ang)*13, vy:Math.sin(ang)*13, size:5, atk:c.atk});
+            }
+        }
+
+        enemies.forEach((en, i) => {
+            const ang = Math.atan2(player.y - en.y, player.x - en.x);
+            en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed;
+            bullets.forEach((b, bi) => {
+                if (Math.hypot(en.x - b.x, en.y - b.y) < 25) { en.hp -= b.atk; bullets.splice(bi, 1); }
+            });
+            if (en.hp <= 0) { enemies.splice(i, 1); gold += 150; }
+            if (Math.hypot(en.x - player.x, en.y - player.y) < 30 && player.invul <= 0) hp -= 0.4;
+        });
+
+        bullets.forEach((b, i) => { b.x += b.vx; b.y += b.vy; if(Math.hypot(b.x - player.x, b.y - player.y) > 1500) bullets.splice(i,1); });
+        effects.forEach((ef, i) => { 
+            if(!ef.loop) ef.r += 10; 
+            if(ef.r > ef.maxR && !ef.loop) effects.splice(i,1); 
+            if(ef.loop){ef.x=player.x; ef.y=player.y; if(player.invul <= 0) effects.splice(i,1);}
+        });
+        document.getElementById('gold').innerText = gold;
+        document.getElementById('hp').innerText = Math.max(0, Math.floor(hp));
+        if(hp <= 0) { alert("Game Over"); location.reload(); }
+    }
+
+    function draw() {
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(canvas.width/2, canvas.height/2);
+        ctx.scale(ZOOM_LEVEL, ZOOM_LEVEL);
+        ctx.translate(-player.x, -player.y);
+        
+        // 背景グリッド
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
+        for(let i=-4000; i<8000; i+=150) { 
+            ctx.beginPath(); ctx.moveTo(i, -4000); ctx.lineTo(i, 8000); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-4000, i); ctx.lineTo(8000, i); ctx.stroke();
+        }
+
+        // プレイヤー
+        ctx.fillStyle = myCharacters[currentCharIndex].color;
+        ctx.beginPath(); ctx.arc(player.x, player.y, 25, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = player.invul > 0 ? "#00ffff" : "white"; ctx.lineWidth = 4; ctx.stroke();
+
+        // 敵
+        ctx.fillStyle = '#ff4d4d'; enemies.forEach(en => { ctx.beginPath(); ctx.arc(en.x, en.y, 25, 0, Math.PI*2); ctx.fill(); });
+        
+        // 弾
+        ctx.fillStyle = '#ffff00'; bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
+
+        // エフェクト
+        effects.forEach(ef => {
+            ctx.strokeStyle = ef.color; ctx.lineWidth = ef.thickness || 5; ctx.beginPath();
+            if(ef.type === 'line') {
+                ctx.save(); ctx.translate(ef.x, ef.y); ctx.rotate(ef.ang);
+                ctx.strokeRect(0, -ef.thickness/2, ef.maxR, ef.thickness); ctx.restore();
+            } else { ctx.arc(ef.x, ef.y, ef.r, 0, Math.PI*2); ctx.stroke(); }
+        });
+        ctx.restore();
+    }
+
+    const joyBase = document.getElementById('joy-base'), stick = document.getElementById('stick');
+    joyBase.addEventListener('pointermove', e => {
+        if (e.buttons > 0) {
+            const rect = joyBase.getBoundingClientRect();
+            const dx = e.clientX - (rect.left + rect.width/2), dy = e.clientY - (rect.top + rect.height/2);
+            const dist = Math.min(Math.hypot(dx, dy), 40), ang = Math.atan2(dy, dx);
+            moveDir.x = Math.cos(ang)*(dist/40); moveDir.y = Math.sin(ang)*(dist/40);
+            stick.style.transform = `translate(${moveDir.x*30}px, ${moveDir.y*30}px)`;
+        }
+    });
+    joyBase.addEventListener('pointerup', () => { moveDir = {x:0, y:0}; stick.style.transform = `translate(0,0)`; });
+
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+    loop();
+</script>
+</body>
+</html>
